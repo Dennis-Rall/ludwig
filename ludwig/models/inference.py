@@ -38,47 +38,21 @@ class InferenceModule(nn.Module):
         model.cpu()
         self.model = model.to_torchscript()
 
-        input_features = {
-            feature[NAME]: get_from_registry(feature[TYPE], input_type_registry) for feature in config["input_features"]
-        }
-        self.preproc_modules = nn.ModuleDict()
-        for feature_name, feature in input_features.items():
-            module_dict_key = get_module_dict_key_from_name(feature_name)
-            self.preproc_modules[module_dict_key] = feature.create_preproc_module(training_set_metadata[feature_name])
-
         self.predict_modules = nn.ModuleDict()
         for feature_name, feature in model.output_features.items():
             module_dict_key = get_module_dict_key_from_name(feature_name)
             self.predict_modules[module_dict_key] = feature.prediction_module
 
-        output_features = {
-            feature[NAME]: get_from_registry(feature[TYPE], output_type_registry)
-            for feature in config["output_features"]
-        }
-        self.postproc_modules = nn.ModuleDict()
-        for feature_name, feature in output_features.items():
-            module_dict_key = get_module_dict_key_from_name(feature_name)
-            self.postproc_modules[module_dict_key] = feature.create_postproc_module(training_set_metadata[feature_name])
+    def forward(self, inputs: Dict[str, torch.Tensor]):
+        # with torch.no_grad():
+        outputs = self.model(inputs)
 
-    def forward(self, inputs: Dict[str, Union[List[str], List[torch.Tensor], torch.Tensor]]):
-        with torch.no_grad():
-            preproc_inputs = {}
-            for module_dict_key, preproc in self.preproc_modules.items():
-                feature_name = get_name_from_module_dict_key(module_dict_key)
-                preproc_inputs[feature_name] = preproc(inputs[feature_name])
-            outputs = self.model(preproc_inputs)
+        predictions: Dict[str, Dict[str, torch.Tensor]] = {}
+        for module_dict_key, predict in self.predict_modules.items():
+            feature_name = get_name_from_module_dict_key(module_dict_key)
+            predictions[feature_name] = predict(outputs, feature_name)
 
-            predictions: Dict[str, Dict[str, torch.Tensor]] = {}
-            for module_dict_key, predict in self.predict_modules.items():
-                feature_name = get_name_from_module_dict_key(module_dict_key)
-                predictions[feature_name] = predict(outputs, feature_name)
-
-            postproc_outputs: Dict[str, Dict[str, Any]] = {}
-            for module_dict_key, postproc in self.postproc_modules.items():
-                feature_name = get_name_from_module_dict_key(module_dict_key)
-                postproc_outputs[feature_name] = postproc(predictions[feature_name])
-
-            return postproc_outputs
+        return predictions
 
 
 class InferenceLudwigModel:
