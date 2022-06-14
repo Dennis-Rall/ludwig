@@ -23,7 +23,6 @@ from jsonschema.validators import extend
 from ludwig.constants import INPUT_FEATURES, OUTPUT_FEATURES, COMBINER, TRAINER, PREPROCESSING, HYPEROPT
 from ludwig.decoders.registry import get_decoder_classes
 from ludwig.encoders.registry import get_encoder_classes
-from ludwig.features.feature_registries import input_type_registry, output_type_registry
 from ludwig.schema.features.utils import get_input_feature_jsonschema, get_output_feature_jsonschema
 from ludwig.schema.combiners.utils import get_combiner_jsonschema
 from ludwig.schema.trainer import get_trainer_jsonschema
@@ -32,9 +31,6 @@ from ludwig.schema.utils import create_cond
 
 def get_schema():
     from ludwig.combiners.combiners import get_combiner_schema
-
-    input_feature_types = sorted(list(input_type_registry.keys()))
-    output_feature_types = sorted(list(output_type_registry.keys()))
 
     schema = {
         "type": "object",
@@ -46,72 +42,10 @@ def get_schema():
             PREPROCESSING: {},
             HYPEROPT: {},
         },
-        "definitions": get_custom_definitions(),
+        "definitions": {},
         "required": [INPUT_FEATURES, OUTPUT_FEATURES],
     }
     return schema
-
-
-def get_input_encoder_conds(input_feature_types):
-    conds = []
-    for feature_type in input_feature_types:
-        encoder_names = list(get_encoder_classes(feature_type).keys())
-        encoder_cond = create_cond(
-            {"type": feature_type},
-            {"encoder": {"enum": encoder_names}},
-        )
-        conds.append(encoder_cond)
-    return conds
-
-
-def get_input_preproc_conds(input_feature_types):
-    conds = []
-    for feature_type in input_feature_types:
-        feature_cls = input_type_registry[feature_type]
-        preproc_spec = {
-            "type": "object",
-            "properties": feature_cls.preprocessing_schema(),
-            "additionalProperties": False,
-        }
-        preproc_cond = create_cond(
-            {"type": feature_type},
-            {"preprocessing": preproc_spec},
-        )
-        conds.append(preproc_cond)
-    return conds
-
-
-def get_output_decoder_conds(output_feature_types):
-    conds = []
-    for feature_type in output_feature_types:
-        decoder_names = list(get_decoder_classes(feature_type).keys())
-        decoder_cond = create_cond(
-            {"type": feature_type},
-            {"decoder": {"enum": decoder_names}},
-        )
-        conds.append(decoder_cond)
-    return conds
-
-
-def get_output_preproc_conds(output_feature_types):
-    conds = []
-    for feature_type in output_feature_types:
-        feature_cls = output_type_registry[feature_type]
-        preproc_spec = {
-            "type": "object",
-            "properties": feature_cls.preprocessing_schema(),
-            "additionalProperties": False,
-        }
-        preproc_cond = create_cond(
-            {"type": feature_type},
-            {"preprocessing": preproc_spec},
-        )
-        conds.append(preproc_cond)
-    return conds
-
-
-def get_custom_definitions():
-    return {}
 
 
 def validate_config(config):
