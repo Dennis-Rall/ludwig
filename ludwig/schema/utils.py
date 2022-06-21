@@ -88,13 +88,17 @@ def RegularizerOptions(default: Union[None, str] = None, allow_none: bool = True
     return StringOptions(["l1", "l2", "l1_l2"], default=default, allow_none=allow_none, description=description)
 
 
-def String(default: Union[None, str] = None, allow_none: bool = True, description=""):
+def String(default: Union[None, str] = None, allow_none: bool = True, pattern: str = ".*", description=""):
     if not allow_none and not isinstance(default, str):
         raise ValidationError(f"Provided default `{default}` should be a string!")
     return field(
         metadata={
             "marshmallow_field": fields.String(
-                allow_none=allow_none, load_default=default, dump_default=default, metadata={"description": description}
+                validate=validate.Regexp(pattern),
+                allow_none=allow_none,
+                load_default=default,
+                dump_default=default,
+                metadata={"description": description}
             )
         },
         default=default,
