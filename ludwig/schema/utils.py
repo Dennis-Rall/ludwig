@@ -98,7 +98,7 @@ def String(default: Union[None, str] = None, allow_none: bool = True, pattern: s
                 allow_none=allow_none,
                 load_default=default,
                 dump_default=default,
-                metadata={"description": description}
+                metadata={"description": description},
             )
         },
         default=default,

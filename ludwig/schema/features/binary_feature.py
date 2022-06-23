@@ -2,9 +2,8 @@ from typing import Optional
 
 from marshmallow_dataclass import dataclass
 
-from ludwig.encoders.registry import get_encoder_classes
 from ludwig.decoders.registry import get_decoder_classes
-
+from ludwig.encoders.registry import get_encoder_classes
 from ludwig.schema import utils as schema_utils
 from ludwig.schema.preprocessing import BasePreprocessingConfig, PreprocessingDataclassField
 
@@ -13,12 +12,10 @@ from ludwig.schema.preprocessing import BasePreprocessingConfig, PreprocessingDa
 class BinaryInputFeatureConfig(schema_utils.BaseMarshmallowConfig):
     """BinaryInputFeature is a dataclass that configures the parameters used for a binary input feature."""
 
-    preprocessing: BasePreprocessingConfig = PreprocessingDataclassField(
-        feature_type='binary'
-    )
+    preprocessing: BasePreprocessingConfig = PreprocessingDataclassField(feature_type="binary")
 
     encoder: Optional[str] = schema_utils.StringOptions(
-        list(get_encoder_classes('binary').keys()),
+        list(get_encoder_classes("binary").keys()),
         default="passthrough",
         description="Encoder to use for this binary feature.",
     )
@@ -28,7 +25,7 @@ class BinaryInputFeatureConfig(schema_utils.BaseMarshmallowConfig):
         default=None,
         allow_none=True,
         description="Name of input feature to tie the weights of the encoder with.  It needs to be the name of a "
-                    "feature of the same type and with the same encoder parameters.",
+        "feature of the same type and with the same encoder parameters.",
     )
 
 
@@ -37,7 +34,7 @@ class BinaryOutputFeatureConfig(schema_utils.BaseMarshmallowConfig):
     """BinaryOutputFeature is a dataclass that configures the parameters used for a binary output feature."""
 
     decoder: Optional[str] = schema_utils.StringOptions(
-        list(get_decoder_classes('binary').keys()),
+        list(get_decoder_classes("binary").keys()),
         default="regressor",
         allow_none=True,
         description="Decoder to use for this binary feature.",
