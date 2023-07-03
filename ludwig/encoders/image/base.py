@@ -14,9 +14,10 @@
 # limitations under the License.
 # ==============================================================================
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import torch
+from transformers import BeitForImageClassification
 
 from ludwig.api_annotations import DeveloperAPI
 from ludwig.constants import IMAGE
@@ -25,7 +26,14 @@ from ludwig.encoders.registry import register_encoder
 from ludwig.modules.convolutional_modules import Conv2DStack, ResNet
 from ludwig.modules.fully_connected_modules import FCStack
 from ludwig.modules.mlp_mixer_modules import MLPMixer
-from ludwig.schema.encoders.image.base import MLPMixerConfig, ResNetConfig, Stacked2DCNNConfig, ViTConfig
+from ludwig.schema.encoders.image.base import (
+    BEiTConfig,
+    ImageEncoderConfig,
+    MLPMixerConfig,
+    ResNetConfig,
+    Stacked2DCNNConfig,
+    ViTConfig,
+)
 from ludwig.utils.torch_utils import FreezeModule
 
 logger = logging.getLogger(__name__)
@@ -417,3 +425,33 @@ class ViTEncoder(ImageEncoder):
     @property
     def output_shape(self) -> torch.Size:
         return torch.Size(self._output_shape)
+
+
+@DeveloperAPI
+@register_encoder("beit", IMAGE)
+class BEiTEncoder(ImageEncoder):
+    def __init__(self, variant: str = "base", trainable: bool = True, encoder_config=None, **kwargs):
+        super().__init__()
+        self.config = encoder_config
+        model_variant = f"microsoft/beit-{variant}-patch16-224-pt22k-ft22k"
+        model = BeitForImageClassification.from_pretrained(model_variant, output_hidden_states=True)
+        self.module = FreezeModule(model, frozen=not trainable)
+
+    def forward(self, inputs: torch.Tensor, head_mask: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
+        transformer_outputs = self.module.module(inputs, head_mask=head_mask)
+        outputs = transformer_outputs["hidden_states"][-1]
+        return {"encoder_output": outputs}
+
+    @staticmethod
+    def get_schema_cls() -> Type[ImageEncoderConfig]:
+        return BEiTConfig
+
+    @property
+    def input_shape(self) -> torch.Size:
+        return torch.Size((3, 224, 224))
+
+    @property
+    def output_shape(self) -> torch.Size:
+        fake_tensor = torch.zeros(1, *self.input_shape)
+        outputs = self.forward(fake_tensor)
+        return outputs["encoder_output"].shape[1:]

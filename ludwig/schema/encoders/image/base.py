@@ -718,3 +718,34 @@ class ViTConfig(ImageEncoderConfig):
 
     def is_pretrained(self) -> bool:
         return self.use_pretrained
+
+
+@DeveloperAPI
+@register_encoder_config("beit", IMAGE)
+@ludwig_dataclass
+class BEiTConfig(ImageEncoderConfig):
+    @staticmethod
+    def module_name():
+        return "BEiT"
+
+    type: str = schema_utils.ProtectedString(
+        "beit",
+        description=ENCODER_METADATA["BEiT"]["type"].long_description,
+    )
+
+    variant: str = schema_utils.StringOptions(
+        ["base", "large"],
+        default="base",
+        description="Variant of the BEiT model.",
+        parameter_metadata=ENCODER_METADATA["BEiT"]["variant"],
+    )
+    trainable: bool = schema_utils.Boolean(
+        default=True,
+        description="Is the encoder trainable.",
+        parameter_metadata=ENCODER_METADATA["BEiT"]["trainable"],
+    )
+
+    def set_fixed_preprocessing_params(self, model_type: str, preprocessing: "ImagePreprocessingConfig"):
+        preprocessing.num_channels = 3
+        preprocessing.height = 224
+        preprocessing.width = 224

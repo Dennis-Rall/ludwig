@@ -3,7 +3,7 @@ from typing import Union
 import pytest
 import torch
 
-from ludwig.encoders.image.base import MLPMixerEncoder, ResNetEncoder, Stacked2DCNN, ViTEncoder
+from ludwig.encoders.image.base import BEiTEncoder, MLPMixerEncoder, ResNetEncoder, Stacked2DCNN, ViTEncoder
 from ludwig.encoders.image.torchvision import (
     TVAlexNetEncoder,
     TVConvNeXtEncoder,
@@ -677,3 +677,16 @@ def test_tv_wide_resnet_encoder(
     inputs = torch.rand(2, *pretrained_model.input_shape)
     outputs = pretrained_model(inputs)
     assert outputs["encoder_output"].shape[1:] == pretrained_model.output_shape
+
+
+@pytest.mark.parametrize("variant, hidden_size", (("base", 768), ("large", 1024)))
+def test_beit_encoder(variant: str, hidden_size: int):
+    # make repeatable
+    set_random_seed(RANDOM_SEED)
+
+    encoder = BEiTEncoder(variant=variant)
+    inputs = torch.rand(2, *encoder.input_shape)
+    print(f"{inputs.shape=}")
+    outputs = encoder(inputs)
+    assert outputs["encoder_output"].shape[1:] == encoder.output_shape
+    assert encoder.output_shape == (197, hidden_size)

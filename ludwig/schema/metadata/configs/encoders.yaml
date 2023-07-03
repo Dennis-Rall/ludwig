@@ -425,6 +425,21 @@ AutoTransformer:
     vocab_size:
         internal_only: true
         ui_display_name: Not displayed
+BEiT:
+    type:
+        short_description: BEiT is a ViT pretrained in a self-supervised fashion
+        long_description:
+            BEiT is a Vision Transformer that is pretrained on a large collection of images in a self-
+            spupervised fashion
+    trainable:
+        ui_display_name: null
+    variant:
+        example_value:
+            - base
+            - large
+        suggested_values: base
+        suggested_values_reasoning: Taken from huggingface defaults.
+        ui_display_name: Model Variant
 BERT:
     type:
         short_description: Bidirectional transformer great for language modeling.
