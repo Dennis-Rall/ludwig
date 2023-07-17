@@ -16,6 +16,8 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
+import timm
+import timm.data
 import torch
 
 from ludwig.api_annotations import DeveloperAPI
@@ -31,6 +33,7 @@ from ludwig.schema.encoders.image.base import (
     MLPMixerConfig,
     ResNetConfig,
     Stacked2DCNNConfig,
+    TimmConfig,
     ViTConfig,
 )
 from ludwig.utils.torch_utils import FreezeModule
@@ -424,3 +427,39 @@ class ViTEncoder(ImageEncoder):
     @property
     def output_shape(self) -> torch.Size:
         return torch.Size(self._output_shape)
+
+
+@DeveloperAPI
+@register_encoder("timm", IMAGE)
+class TimmEncoder(ImageEncoder):
+    def __init__(
+        self,
+        model_name: str = "resnet50.a1_in1k",
+        trainable: bool = True,
+        use_pretrained: bool = True,
+        **kwargs,
+    ):
+        super().__init__()
+        self.timm_model = timm.create_model(model_name, pretrained=use_pretrained)
+        self.data_config = timm.data.resolve_data_config(model=self.timm_model)
+        if not trainable:
+            self.timm_model.eval()
+
+    def forward(self, inputs: torch.Tensor, head_mask: Optional[torch.Tensor] = None) -> EncoderOutputDict:
+        outputs = self.timm_model.forward_features(inputs)
+        return {ENCODER_OUTPUT: outputs}
+
+    @staticmethod
+    def get_schema_cls():
+        return TimmConfig
+
+    @property
+    def input_shape(self) -> torch.Size:
+        input_size = self.data_config["input_size"]
+        return torch.Size(input_size)
+
+    @property
+    def output_shape(self) -> torch.Size:
+        mock_inputs = torch.zeros(1, *self.input_shape)
+        output = self.forward(mock_inputs)[ENCODER_OUTPUT]
+        return torch.Size(output.shape[1:])

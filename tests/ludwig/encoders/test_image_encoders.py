@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from ludwig.constants import ENCODER_OUTPUT
-from ludwig.encoders.image.base import MLPMixerEncoder, ResNetEncoder, Stacked2DCNN, ViTEncoder
+from ludwig.encoders.image.base import MLPMixerEncoder, ResNetEncoder, Stacked2DCNN, TimmEncoder, ViTEncoder
 from ludwig.encoders.image.torchvision import (
     TVAlexNetEncoder,
     TVConvNeXtEncoder,
@@ -678,3 +678,23 @@ def test_tv_wide_resnet_encoder(
     inputs = torch.rand(2, *pretrained_model.input_shape)
     outputs = pretrained_model(inputs)
     assert outputs[ENCODER_OUTPUT].shape[1:] == pretrained_model.output_shape
+
+
+@pytest.mark.parametrize("trainable", [True, False])
+@pytest.mark.parametrize("use_pretrained", [True, False])
+@pytest.mark.parametrize(
+    "model_name",
+    [
+        "resnet50.a1_in1k",
+        "swin_base_patch4_window7_224.ms_in22k_ft_in1k",
+        "timm/eva02_base_patch14_448.mim_in22k_ft_in22k_in1k",
+    ],
+)
+def test_timm_encoder(model_name: str, trainable: bool, use_pretrained: bool):
+    # make repeatable
+    set_random_seed(RANDOM_SEED)
+
+    encoder = TimmEncoder(model_name=model_name, trainable=trainable, use_pretrained=use_pretrained)
+    inputs = torch.rand(2, *encoder.input_shape)
+    outputs = encoder(inputs)[ENCODER_OUTPUT]
+    assert outputs.shape[1:] == encoder.output_shape

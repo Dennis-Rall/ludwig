@@ -718,3 +718,37 @@ class ViTConfig(ImageEncoderConfig):
 
     def is_pretrained(self) -> bool:
         return self.use_pretrained
+
+
+@DeveloperAPI
+@register_encoder_config("timm", IMAGE)
+@ludwig_dataclass
+class TimmConfig(ImageEncoderConfig):
+    @staticmethod
+    def module_name():
+        return "timm"
+
+    model_name: str = schema_utils.String(
+        default="resnet50.a1_in1k",
+        description="The name of the timm model to use.",
+        parameter_metadata=ENCODER_METADATA["Timm"]["model_name"],
+    )
+
+    def set_fixed_preprocessing_params(self, model_type: str, preprocessing: "ImagePreprocessingConfig"):
+        if self.requires_equal_dimensions() and self.required_width() != self.required_height():
+            raise ValueError("Invalid definition. `required_width` and `required_height` are not equal")
+        preprocessing.requires_equal_dimensions = self.requires_equal_dimensions()
+        preprocessing.height = self.required_height()
+        preprocessing.width = self.required_width()
+
+    @classmethod
+    def requires_equal_dimensions(cls) -> bool:
+        return True
+
+    @classmethod
+    def required_width(cls) -> Optional[int]:
+        return 224
+
+    @classmethod
+    def required_height(cls) -> Optional[int]:
+        return 224
