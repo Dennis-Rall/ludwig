@@ -4255,6 +4255,13 @@ Longformer:
     vocab_size:
         internal_only: true
         ui_display_name: Not displayed
+LudwigModelEncoder:
+    type:
+        short_description: Uses an encoder of a saved LudwigModel
+        long_description:
+            The LudwigModelEncoder loads an saved LudwigModel, extracts the encoder of an input feature
+            from it and uses this encoder. So trained LudwigModels can be used for Transfer Learning.
+
 MLPMixer:
     type:
         short_description: Image encoder which applies fully connected layers to different patches of the image.

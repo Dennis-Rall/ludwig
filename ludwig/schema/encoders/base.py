@@ -2,7 +2,24 @@ from abc import ABC
 from typing import List, TYPE_CHECKING, Union
 
 from ludwig.api_annotations import DeveloperAPI
-from ludwig.constants import BINARY, MODEL_ECD, MODEL_GBM, MODEL_LLM, NUMBER, TEXT, TIMESERIES, VECTOR
+from ludwig.constants import (
+    AUDIO,
+    BAG,
+    BINARY,
+    CATEGORY,
+    DATE,
+    H3,
+    IMAGE,
+    MODEL_ECD,
+    MODEL_GBM,
+    MODEL_LLM,
+    NUMBER,
+    SEQUENCE,
+    SET,
+    TEXT,
+    TIMESERIES,
+    VECTOR,
+)
 from ludwig.schema import common_fields
 from ludwig.schema import utils as schema_utils
 from ludwig.schema.encoders.utils import register_encoder_config
@@ -102,3 +119,38 @@ class DenseEncoderConfig(BaseEncoderConfig):
     num_layers: int = common_fields.NumFCLayersField(default=1, non_zero=True)
 
     fc_layers: List[dict] = common_fields.FCLayersField()
+
+
+@DeveloperAPI
+@register_encoder_config(
+    "ludwig-model", [BINARY, NUMBER, CATEGORY, BAG, SET, SEQUENCE, TEXT, VECTOR, AUDIO, DATE, H3, IMAGE, TIMESERIES]
+)
+@ludwig_dataclass
+class LudwigModelEncoderConfig(BaseEncoderConfig):
+    """LudwigModelEncoderConfig is a dataclass that configures the parameters used for a ludwigModel encoder."""
+
+    @staticmethod
+    def module_name():
+        return "LudwigModelEncoder"
+
+    type: str = schema_utils.ProtectedString(
+        "ludwig-model",
+        description=ENCODER_METADATA["LudwigModelEncoder"]["type"].long_description,
+    )
+
+    path: str = schema_utils.String(
+        description="path of the LudwigModel to load",
+        default=None,
+        allow_none=True,
+    )
+
+    input_feature: str = schema_utils.String(
+        description="name of the input feature of the LudwigModel",
+        default=None,
+        allow_none=True,
+    )
+
+    trainable: bool = schema_utils.Boolean(
+        default=True,
+        description="Is the encoder trainable.",
+    )

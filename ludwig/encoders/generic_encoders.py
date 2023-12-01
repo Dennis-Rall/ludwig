@@ -19,12 +19,33 @@ from typing import Optional, Type
 import torch
 
 from ludwig.api_annotations import DeveloperAPI
-from ludwig.constants import BINARY, ENCODER_OUTPUT, NUMBER, TEXT, TIMESERIES, VECTOR
+from ludwig.constants import (
+    AUDIO,
+    BAG,
+    BINARY,
+    CATEGORY,
+    DATE,
+    ENCODER_OUTPUT,
+    H3,
+    IMAGE,
+    NUMBER,
+    SEQUENCE,
+    SET,
+    TEXT,
+    TIMESERIES,
+    VECTOR,
+)
 from ludwig.encoders.base import Encoder
 from ludwig.encoders.registry import register_encoder
 from ludwig.encoders.types import EncoderOutputDict
 from ludwig.modules.fully_connected_modules import FCStack
-from ludwig.schema.encoders.base import BaseEncoderConfig, DenseEncoderConfig, PassthroughEncoderConfig
+from ludwig.schema.encoders.base import (
+    BaseEncoderConfig,
+    DenseEncoderConfig,
+    LudwigModelEncoderConfig,
+    PassthroughEncoderConfig,
+)
+from ludwig.utils.torch_utils import FreezeModule
 
 logger = logging.getLogger(__name__)
 
@@ -117,3 +138,50 @@ class DenseEncoder(Encoder):
     @property
     def output_shape(self) -> torch.Size:
         return torch.Size([self.fc_stack.layers[-1]["output_size"]])
+
+
+@DeveloperAPI
+@register_encoder(
+    "ludwig-model", [BINARY, NUMBER, CATEGORY, BAG, SET, SEQUENCE, TEXT, VECTOR, AUDIO, DATE, H3, IMAGE, TIMESERIES]
+)
+class LudwigModelEncoder(Encoder):
+    def __init__(
+        self,
+        path: str,
+        input_feature: str,
+        trainable: bool = True,
+        **kwargs,
+    ):
+        super().__init__()
+        self.path = path
+        self.input_feature = input_feature
+        encoder = self._load_encoder()
+        self.encoder = FreezeModule(encoder, frozen=not trainable)
+
+    def _load_encoder(self) -> Encoder:
+        from ludwig.api import LudwigModel
+        from ludwig.models.ecd import ECD
+
+        model = LudwigModel.load(self.path)
+        if not isinstance(model.model, ECD):
+            raise ValueError("Model to load in the LudwigModelEncoder must be an ECD.")
+        input_feature = model.model.input_features.get(self.input_feature)
+        if not isinstance(input_feature.encoder_obj, Encoder):
+            raise ValueError("Could not load the input feature of the saved ludwig model.")
+        return input_feature.encoder_obj
+
+    def forward(self, inputs: torch.Tensor, mask: Optional[torch.Tensor] = None) -> EncoderOutputDict:
+        encoder_outputs = self.encoder.module(inputs)[ENCODER_OUTPUT]
+        return {ENCODER_OUTPUT: encoder_outputs}
+
+    @staticmethod
+    def get_schema_cls() -> Type[BaseEncoderConfig]:
+        return LudwigModelEncoderConfig
+
+    @property
+    def input_shape(self) -> torch.Size:
+        return self.encoder.module.input_shape
+
+    @property
+    def output_shape(self) -> torch.Size:
+        return self.encoder.module.output_shape
