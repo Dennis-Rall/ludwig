@@ -43,7 +43,8 @@ def test_ludwig_model_encoder(tmpdir: str):
 
     assert isinstance(model.model, ECD)
     assert isinstance(transfer_model.model, ECD)
-    data = {"image_path": torch.ones(1, 1, 28, 28, dtype=torch.float32)}
+    tensor = torch.ones(1, 1, 28, 28, dtype=torch.float32, device=model.model.device)
+    data = {"image_path": tensor}
     encoded_normal = model.model.encode(data)["image_path"][ENCODER_OUTPUT]
     encoded_transfer = transfer_model.model.encode(data)["image_path"][ENCODER_OUTPUT]
     assert torch.equal(encoded_normal, encoded_transfer)

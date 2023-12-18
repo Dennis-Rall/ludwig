@@ -1,0 +1,26 @@
+{
+    "configurations": {
+        "test":{
+            "adapter": "debugpy",
+            "configuration": {
+                "name": "pytest",
+                "type": "python",
+                "request": "launch",
+                "python": ".venv/bin/python",
+                "module": "pytest",
+                "cwd": "${workspaceFolder}",
+                "args": [
+                  "tests/integration_tests/test_ludwig_model_encoder.py"
+                ]
+            },
+            "breakpoints": {
+                "exception": {
+                  "raised": "N",
+                  "caught": "N",
+                  "uncaught": "Y",
+                  "userUnhandled": "N"
+                }
+            }
+        }
+    }
+}
