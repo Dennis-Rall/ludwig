@@ -2391,6 +2391,8 @@ class LLMEncoder(Encoder):
 
     def __init__(self, encoder_config: LLMEncoderConfig = None, **kwargs):
         super().__init__()
+        self.register_load_state_dict_post_hook(self.remove_missing_non_adapter_keys)
+
         self.config = encoder_config
 
         self.model_name = self.config.base_model
@@ -2511,6 +2513,7 @@ class LLMEncoder(Encoder):
         # Call this first to make sure torch can do its usual load. In the adapter case, this should essentially be a
         # no-op, but the adapter weights will be collected in `unexpected_keys` because PEFT changes the parameter
         # names under the hood.
+
         super()._load_from_state_dict(
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
         )
@@ -2525,8 +2528,53 @@ class LLMEncoder(Encoder):
             peft_model_state_dict = {k: v for k, v in state_dict.items() if adapter_type_prefix in k}
             set_peft_model_state_dict(self.model, peft_model_state_dict)
 
-            if strict:
-                for k in peft_model_state_dict.keys():
-                    sanitized = k.replace(f"{prefix}model.", "")  # `unexpected_keys` doesn't record the prefix
-                    sanitized = sanitized.replace("default.", "")  # By default, PEFT adds a "default." to param names
-                    unexpected_keys.remove(sanitized)
+    def remove_missing_non_adapter_keys(self, module, incompatible_keys):
+        """Update the missing and unexpected keys lists to reflect custom adapter state load logic.
+
+        This method should never return anything unless the underlying torch hook logic is updated. Any changes to the
+        lists in `incompatible_keys` must be made in-place.
+
+        Args:
+            module: The torch module with newly loaded state
+            incompatible_keys: A tuple with the lists of missing and unexpected keys that were recorded while loading
+        """
+        # If no adapter was used, `LLMEncoder.load_state_dict` should use the default `torch.Module.load_state_dict`
+        # code path to load weights and no modification should be necessary.
+        if self.config.adapter:
+            adapter_type_prefix = self.ADAPTER_PARAM_NAME_PREFIX[self.config.adapter.type]
+            missing_keys, unexpected_keys = incompatible_keys
+
+            # The state dict uses fully qualified parameter names, but this function does not have access to the
+            # fully qualified names or a prefix to recreate them. Iterate over the missing keys and greedily select the
+            # first non-adapter key that shares a suffix with a model parameter name.
+            sample_missing_key = ""
+            sample_model_key = ""
+            for k in missing_keys:
+                # Exclude any adapter weight--those should not be missing. Let torch handle that downstream.
+                if adapter_type_prefix not in k:
+                    sample_model_keys = [p for p, _ in self.named_parameters() if p in k]
+                    if sample_model_keys:
+                        sample_model_key = sample_model_keys[0]
+                        sample_missing_key = k
+                        break
+            sd_prefix = sample_missing_key.replace(sample_model_key, "")
+
+            # When loading the adapter weights in strict mode, torch will register the base model weights as missing
+            # from the state dict and raise an exception. The base model weights are intended to be excluded, so the
+            # missing_keys list is updated post-load to avoid the error.
+            for k, _ in self.named_parameters():
+                full_name = f"{sd_prefix}{k}"
+                if full_name in missing_keys and adapter_type_prefix not in full_name:
+                    missing_keys.remove(full_name)
+
+            # peft changes the adapter parameter names under the hood to include the adapter name. When retreiving the
+            # adapter state dict, however, the name is not included. This causes the adpater weights to be recorded as
+            # unexpected parameters. `LLMEncoder._load_from_state_dict` loads the adapter parameters using a peft
+            # utility that accounts for the updated names, so here we remove any adapter parameters from the unexpected
+            # keys list to avoid errors.
+            from peft.utils.save_and_load import get_peft_model_state_dict
+
+            sd = get_peft_model_state_dict(self.model)
+            for k in sd.keys():
+                if k in unexpected_keys:
+                    unexpected_keys.remove(k)
