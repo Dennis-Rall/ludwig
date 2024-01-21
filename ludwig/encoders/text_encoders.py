@@ -2387,13 +2387,19 @@ class TfIdfEncoder(Encoder):
 class LLMEncoder(Encoder):
     # Per-adapter type prefixes for parameter names in the state dict, taken from
     # https://github.com/huggingface/peft/blob/0f1e9091cc975eb5458cc163bf1843a34fb42b76/src/peft/utils/save_and_load.py#L173C9-L180
-    ADAPTER_PARAM_NAME_PREFIX = {"lora": "lora_", "adalora": "lora_"}
+    ADAPTER_PARAM_NAME_PREFIX = {
+        "adalora": "lora_",
+        "ia3": "ia3_",
+        "lora": "lora_",
+    }
 
     def __init__(self, encoder_config: LLMEncoderConfig = None, **kwargs):
         super().__init__()
         self.register_load_state_dict_post_hook(self.remove_missing_non_adapter_keys)
 
         self.config = encoder_config
+
+        self.adapter_is_initialized = False
 
         self.model_name = self.config.base_model
         self.model_config = AutoConfig.from_pretrained(self.config.base_model)
@@ -2421,9 +2427,15 @@ class LLMEncoder(Encoder):
 
         self.attention_masks = None
 
-        self.prepare_for_training()
-
         clear_data_cache()
+
+        # Because we use the last hidden state as encoder output rather than the logits, the final module of the model
+        # has input pass through but no gradient update in the backward pass. This can lead to a DDP error. Freezing
+        # the module prevents this from happening. This is done at initialization to prevent "unused parameters" errors
+        # from happening when the encoder is used before `prepare_for_training` is called, for example during batch
+        # size tuning.
+        out_module = list(self.model.modules())[-1]
+        out_module.requires_grad_(requires_grad=False)
 
     @staticmethod
     def get_schema_cls() -> Type[BaseEncoderConfig]:
@@ -2451,18 +2463,13 @@ class LLMEncoder(Encoder):
             self.model.print_trainable_parameters()
             logger.info("==================================================")
 
+            self.adapter_is_initialized = True
+
     def prepare_for_training(self):
         # TODO: this implementation will not work if resuming from a previous checkpoint. Need to fix this.
         if self.config.quantization:
             self.prepare_for_quantized_training()
         self.initialize_adapter()
-
-        # Because we use the last hidden state as encoder output rather than the logits, the final module of the model
-        # has input pass through but no gradient update in the backward pass. This can lead to a DDP error. Freezing
-        # the module prevents this from happening.
-        if not self.config.adapter:
-            out_module = list(self.model.modules())[-1]
-            out_module.requires_grad_(requires_grad=False)
 
     def prepare_for_quantized_training(self):
         from peft import prepare_model_for_kbit_training
@@ -2477,7 +2484,7 @@ class LLMEncoder(Encoder):
             # Get the hidden state of the last layer and return it as the text encoding
             model_outputs = self.model(input_ids=inputs, output_hidden_states=True).hidden_states[-1]
 
-        return {ENCODER_OUTPUT: model_outputs}
+        return {ENCODER_OUTPUT: model_outputs.type(torch.float32)}
 
     def _save_to_state_dict(self, destination: Dict, prefix: str, keep_vars: bool):
         # This is called by `torch.nn.Module.state_dict()` under the hood. `state_dict()` does additional work to
@@ -2485,7 +2492,7 @@ class LLMEncoder(Encoder):
         # contents of the state_dict.
         # The three args to this method are supplied by Module.state_dict
         # https://github.com/pytorch/pytorch/blob/8739d1e3f9b08f4282fe79fc8dacd781d16913ff/torch/nn/modules/module.py#L1824
-        if self.config.adapter:
+        if self.config.adapter and self.adapter_is_initialized:
             # get_peft_model_state_dict geneates a state dict that only contains the adapter weights
             from peft.utils.save_and_load import get_peft_model_state_dict
 
@@ -2498,7 +2505,7 @@ class LLMEncoder(Encoder):
     def state_dict(self, *args, destination=None, prefix="", keep_vars=False):
         destination = super().state_dict(destination, prefix=prefix, keep_vars=keep_vars)
 
-        if self.config.adapter:
+        if self.config.adapter and self.adapter_is_initialized:
             adapter_type_prefix = self.ADAPTER_PARAM_NAME_PREFIX[self.config.adapter.type]
             exclude_model_keys = [k for k in destination.keys() if adapter_type_prefix not in k]
 
@@ -2518,7 +2525,7 @@ class LLMEncoder(Encoder):
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
         )
 
-        if self.config.adapter:
+        if self.config.adapter and self.adapter_is_initialized:
             # When using an adapter, only the adapter weights are saved, and so we only want to load those weights.
             # Under the hood, PEFT alters the names of the parameters, which leads to an "unexpected keys" error when
             # using strict mode. This block uses PEFT's version of `load_state_dict` to handle loading in weights.
@@ -2540,7 +2547,7 @@ class LLMEncoder(Encoder):
         """
         # If no adapter was used, `LLMEncoder.load_state_dict` should use the default `torch.Module.load_state_dict`
         # code path to load weights and no modification should be necessary.
-        if self.config.adapter:
+        if self.config.adapter and self.adapter_is_initialized:
             adapter_type_prefix = self.ADAPTER_PARAM_NAME_PREFIX[self.config.adapter.type]
             missing_keys, unexpected_keys = incompatible_keys
 

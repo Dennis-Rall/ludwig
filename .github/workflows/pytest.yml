@@ -28,7 +28,7 @@ jobs:
           - python-version: "3.8"
             pytorch-version: 2.0.0
             torchscript-version: 1.10.2
-            ray-version: 2.2.0
+            ray-version: 2.3.1
           - python-version: "3.9"
             pytorch-version: 2.1.1
             torchscript-version: 1.10.2
@@ -126,9 +126,7 @@ jobs:
 
           if [ "$PYTORCH" == "nightly" ]; then
             extra_index_url=https://download.pytorch.org/whl/nightly/cpu
-            # Temporary Fix - remove torchdata once https://github.com/pytorch/text/pull/2218 lands.
-            pip install torchdata --extra-index-url https://download.pytorch.org/whl/cpu
-            pip install --pre torch torchdata torchtext torchvision torchaudio --index-url $extra_index_url
+            pip install --pre torch torchtext torchvision torchaudio --extra-index-url $extra_index_url
 
           else
             extra_index_url=https://download.pytorch.org/whl/cpu
@@ -569,7 +567,7 @@ jobs:
   #         aws-region: ${{ secrets.AWS_REGION }}
 
   #     - name: Stop EC2 runner
-  #       uses: machulav/ec2-github-runner@v2.2.0
+  #       uses: machulav/ec2-github-runner@v2.3.1
   #       with:
   #         mode: stop
   #         github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
