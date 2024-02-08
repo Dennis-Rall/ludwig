@@ -8,7 +8,7 @@ import torch.nn.functional as F
 import transformers
 from bitsandbytes.nn.modules import Embedding
 from packaging import version
-from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizer
+from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizer, TextStreamer
 
 from ludwig.constants import IGNORE_INDEX_TOKEN_ID, LOGITS, PREDICTIONS, PROBABILITIES
 from ludwig.schema.trainer import LLMTrainerConfig
@@ -23,20 +23,22 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+transformers_436 = version.parse(transformers.__version__) >= version.parse("4.36.0")
 
 FALLBACK_CONTEXT_LEN = 2048
 
-transformers_436 = version.parse(transformers.__version__) >= version.parse("4.36.0")
-
-# The official microsoft phi models don't work out of the box because the weights aren't compatiable with HF
-# See https://github.com/huggingface/transformers/issues/28049 for more context.
-_PHI_BASE_MODEL_MAPPING = {
-    "microsoft/phi-1": "susnato/phi-1_dev",
-    "microsoft/phi-1.5": "susnato/phi-1_5_dev",
+_PHI_MODELS = {
+    "susnato/phi-1_dev",
+    "susnato/phi-1_5_dev",
+    "susnato/phi-2",
+    "microsoft/phi-1",
+    "microsoft/phi-1_5",
+    "microsoft/phi-2",
 }
 
-# The susnato Phi models as of Transformers 4.36.1 don't support "device_map='auto'" at model load time.
-_MODELS_WITH_DEVICE_MAP_AUTO_EXCLUSION = {"susnato/phi-1_dev", "susnato/phi-1_5_dev"}
+_MODELS_WITH_DEVICE_MAP_AUTO_EXCLUSION = set()
+# Phi models don't support "device_map='auto'" at model load time as of transformers 4.37.0.
+_MODELS_WITH_DEVICE_MAP_AUTO_EXCLUSION.update(_PHI_MODELS)
 
 
 @default_retry(tries=8)
@@ -621,3 +623,8 @@ def update_embedding_layer(model: AutoModelForCausalLM, config_obj: LLMTrainerCo
         logger.info("Updated the pretrained embedding layer to use the embedding layer from bitsandbytes.")
 
     return model
+
+
+def create_text_streamer(tokenizer: PreTrainedTokenizer) -> TextStreamer:
+    """Creates a TextStreamer object for streaming text to stdout during generation."""
+    return TextStreamer(tokenizer=tokenizer, skip_prompt=True)

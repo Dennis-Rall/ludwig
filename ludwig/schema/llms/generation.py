@@ -19,7 +19,10 @@ class LLMGenerationConfig(schema_utils.BaseMarshmallowConfig):
     max_new_tokens: Optional[int] = schema_utils.PositiveInteger(
         default=32,
         allow_none=True,
-        description="The maximum number of new tokens to generate, ignoring the number of tokens in the input prompt.",
+        description="The maximum number of new tokens to generate, ignoring the number of tokens in the input prompt. "
+        "If not set, this is dynamically determined by Ludwig based on either the `max_sequence_length` of the ouput "
+        "feature, the global_max_sequence_length specified in preprocessing (if specified), or the "
+        "maximum context length supported by the model (in the order specified).",
         parameter_metadata=LLM_METADATA["generation"]["max_new_tokens"],
     )
 
@@ -101,6 +104,14 @@ class LLMGenerationConfig(schema_utils.BaseMarshmallowConfig):
         description="Whether or not the model should use the past last key/values attentions (if applicable to the "
         "model) to speed up decoding.",
         parameter_metadata=LLM_METADATA["generation"]["use_cache"],
+    )
+
+    prompt_lookup_num_tokens: Optional[int] = schema_utils.NonNegativeInteger(
+        default=None,
+        allow_none=True,
+        description="The number of tokens to consider as a candidate from the prompt for prompt lookup decoding, "
+        " an alternate way of performing assisted generation. If set to 0, the prompt lookup decoding is not used.",
+        parameter_metadata=LLM_METADATA["generation"]["prompt_lookup_num_tokens"],
     )
 
     # Parameters for manipulation of the model output logits

@@ -1,21 +1,21 @@
 Cython>=0.25
 h5py>=2.6,!=3.0.0
 numpy>=1.15
-pandas>=1.0,!=1.1.5
+# GitHub Issue for Pinning Pandas < 2.2.0: https://github.com/ludwig-ai/ludwig/issues/3907
+pandas>=1.0,!=1.1.5,<2.2.0
 scipy>=0.18
 tabulate>=0.7
 scikit-learn
 tqdm
-torch>=1.13.0
+torch>=2.0.0
 torchaudio
 torchtext
 torchvision
 pydantic<2.0
-huggingface-hub>=0.19.0
-transformers @ git+https://github.com/huggingface/transformers@73de5108e172112bc620cfc0ceebfd27730dba11
+transformers>=4.37.0
 tifffile
 imagecodecs
-tokenizers>=0.13.3
+tokenizers>=0.15
 spacy>=2.3
 PyYAML>=3.12,<6.0.1,!=5.4.* #Exlude PyYAML 5.4.* due to incompatibility with awscli
 absl-py
@@ -33,7 +33,7 @@ torchmetrics>=0.11.0
 torchinfo
 filelock
 psutil==5.9.4
-protobuf==3.20.3
+protobuf
 py-cpuinfo==9.0.0
 gpustat
 rich~=12.4.4
@@ -45,8 +45,9 @@ sacremoses
 sentencepiece
 
 # requirements for daft
-# NOTE: Pinned to <0.2 because of deprecation of fsspec argument in Daft
-getdaft<0.2
+# NOTE: daft needs to be <0.2 because of deprecation of fsspec argument in Daft
+# Pinned for consistency with ludwig-ray docker image.
+getdaft==0.1.20
 
 # requirement for various paged and 8-bit optimizers
 bitsandbytes<0.41.0
@@ -57,9 +58,12 @@ xlrd>=2.0.1         # excel
 xlsxwriter>=1.4.3   # excel
 openpyxl>=3.0.7     # excel
 pyxlsb>=1.0.8       # excel
-pyarrow             # parquet
+pyarrow<15.0.0      # parquet
 lxml                # html
 html5lib            # html
 
 # requirement for loading hugging face datasets
 datasets
+
+# pin required for torch 2.1.0
+urllib3<2

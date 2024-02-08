@@ -34,7 +34,7 @@ from ludwig.schema.llms.generation import LLMGenerationConfig
 from ludwig.schema.trainer import ECDTrainerConfig
 from ludwig.types import HyperoptConfigDict, ModelConfigDict
 from ludwig.utils.data_utils import get_sanitized_feature_name
-from ludwig.utils.llm_utils import _PHI_BASE_MODEL_MAPPING, get_context_len
+from ludwig.utils.llm_utils import _PHI_MODELS, get_context_len
 
 if TYPE_CHECKING:
     from ludwig.schema.model_types.base import ModelConfig
@@ -307,27 +307,21 @@ def set_llm_parameters(config: "ModelConfig") -> None:
     if config.model_type != MODEL_LLM:
         return
 
-    # Do an in-place replacement for Phi models since they don't work well out of the box
-    _replace_phi_model_with_supported_model(config)
-
     # Set preprocessing parameters for text features for LLM model type
     _set_llm_tokenizers(config)
 
     # Set max_new_tokens in generation config to the max sequence length of the output features
     _set_generation_max_new_tokens(config)
 
+    # HACK(Arnav): Set Mixtral target modules when using LoRA
+    # GitHub issue: https://github.com/ludwig-ai/ludwig/issues/3853
+    # PEFT PR: https://github.com/huggingface/peft/pull/1376
+    _set_mixtral_target_modules(config)
 
-def _replace_phi_model_with_supported_model(config: "ModelConfig") -> None:
-    """Replaces the phi model with a supported model that is compatible with the LLM model type."""
-    if config.base_model not in _PHI_BASE_MODEL_MAPPING:
-        return
-
-    logger.warning(
-        f"{config.base_model} does not work correctly out of the box since it requires running remote code."
-        f"Replacing {config.base_model} with {_PHI_BASE_MODEL_MAPPING[config.base_model]} as the base LLM model."
-    )
-
-    config.base_model = _PHI_BASE_MODEL_MAPPING[config.base_model]
+    # HACK(Arnav): Set Phi-2 target modules when using LoRA
+    # GitHub issue: https://github.com/ludwig-ai/ludwig/issues/3910
+    # PEFT PR: https://github.com/huggingface/peft/pull/1375
+    _set_phi2_target_modules(config)
 
 
 def _set_llm_tokenizers(config: "ModelConfig") -> None:
@@ -419,6 +413,42 @@ def _set_generation_max_new_tokens(config: "ModelConfig") -> None:
         "`generation.max_new_tokens` to a different value in your Ludwig config."
     )
     config.generation.max_new_tokens = max_possible_sequence_length
+
+
+def _set_mixtral_target_modules(config: "ModelConfig") -> None:
+    """If the base model is Mixtral 7x8, LoRA is enabled and the target modules are not set, set the target modules
+    to q_proj and v_proj."""
+    if config.base_model not in {"mistralai/Mixtral-8x7B-v0.1", "mistralai/Mixtral-8x7B-Instruct-v0.1"}:
+        return
+
+    if not config.adapter:
+        return
+
+    if config.adapter.type != "lora" or config.adapter.target_modules:
+        return
+
+    target_modules = ["q_proj", "v_proj"]
+
+    logger.info(f"Setting adapter target modules to {target_modules} for Mixtral 7x8 base model with LoRA adapter.")
+    config.adapter.target_modules = target_modules
+
+
+def _set_phi2_target_modules(config: "ModelConfig") -> None:
+    """If the base model is Phi-2, LoRA is enabled and the target modules are not set, set the target modules to
+    maximize performance."""
+    if config.base_model not in _PHI_MODELS:
+        return
+
+    if not config.adapter:
+        return
+
+    if config.adapter.type != "lora" or config.adapter.target_modules:
+        return
+
+    target_modules = ["q_proj", "k_proj", "v_proj", "dense", "fc1", "fc2"]
+
+    logger.info(f"Setting adapter target modules to {target_modules} for Phi-2 base model with LoRA adapter.")
+    config.adapter.target_modules = target_modules
 
 
 @DeveloperAPI
