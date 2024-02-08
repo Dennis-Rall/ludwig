@@ -40,6 +40,7 @@ from ludwig.constants import (
     MAX_CPU_BATCH_SIZE,
     MINIMIZE,
     MODEL_ECD,
+    MODEL_LLM,
     TEST,
     TRAINING,
     USED_TOKENS,
@@ -68,6 +69,7 @@ from ludwig.types import ModelConfigDict
 from ludwig.utils import time_utils
 from ludwig.utils.batch_size_tuner import BatchSizeEvaluator
 from ludwig.utils.checkpoint_utils import Checkpoint, CheckpointManager
+from ludwig.utils.config_utils import get_quantization
 from ludwig.utils.data_utils import load_json
 from ludwig.utils.defaults import default_random_seed
 from ludwig.utils.fs_utils import path_exists
@@ -552,6 +554,7 @@ class Trainer(BaseTrainer):
         snapshot_weights: bool = True,
         on_best_batch_size_updated: Optional[Callable[[int, float, int], None]] = None,
         tune_for_training: bool = True,
+        global_max_sequence_length: Optional[int] = None,
     ) -> int:
         logger.info("Tuning batch size...")
         skip_save_model = self.skip_save_model
@@ -592,7 +595,7 @@ class Trainer(BaseTrainer):
                 checkpoint.save(os.path.join(tmpdir, "latest.ckpt"), global_step=0)
             try:
                 best_batch_size = evaluator.select_best_batch_size(
-                    len(training_set), max_batch_size, max_trials, self.is_coordinator()
+                    len(training_set), max_batch_size, max_trials, self.is_coordinator(), global_max_sequence_length
                 )
                 best_batch_size = self.distributed.broadcast_object(best_batch_size)
 
@@ -626,7 +629,7 @@ class Trainer(BaseTrainer):
                 trainer.model.reset_metrics()
                 trainer.optimizer.zero_grad()
 
-            def step(self, batch_size: int):
+            def step(self, batch_size: int, global_max_sequence_length: Optional[int] = None):
                 trainer.distributed.set_batch_size(trainer.dist_model, batch_size)
                 inputs = {
                     input_feature_name: input_feature.create_sample_input(batch_size=batch_size).to(trainer.device)
@@ -648,7 +651,7 @@ class Trainer(BaseTrainer):
                 trainer.model.reset_metrics()
                 trainer.optimizer.zero_grad()
 
-            def step(self, batch_size: int):
+            def step(self, batch_size: int, global_max_sequence_length: Optional[int] = None):
                 trainer.distributed.set_batch_size(trainer.dist_model, batch_size)
                 inputs = {
                     input_feature_name: input_feature.create_sample_input(batch_size=batch_size).to(trainer.device)
@@ -1132,19 +1135,19 @@ class Trainer(BaseTrainer):
 
                     # For a full explanation of this 8-bit workaround, see https://github.com/ludwig-ai/ludwig/pull/3606
                     # TODO (jeffkinnison): Determine why `SCB` and `CB` are deleted from parameter state
-                    if (
-                        hasattr(self.model.config_obj, "quantization")
-                        and self.model.config_obj.quantization
-                        and self.model.config_obj.quantization.bits == 8
-                    ):
+                    quantization = get_quantization(self.model.config_obj)
+                    uses_quantization = bool(quantization) if not isinstance(quantization, list) else any(quantization)
+                    if uses_quantization and 8 in quantization:
                         # If the model was previously placed on GPU, 8-bit parameter state will be updated with several
                         # matrices containing quantization information. These are recorded matrices are recorded in the
                         # training checkpoint state dicts, but do not necessarily exist in the parameter object, leading
                         # to a RuntimeError in `load_state_dict`. Explicitly call `model.cuda()` to make sure the
                         # matrices are part of model state. This workaround is necessary because the matrices are
                         # deleted during the model's forward pass.
-                        if self.model.model.device.type == "cuda":
+                        if self.model.config_obj.model_type == MODEL_LLM and self.model.model.device.type == "cuda":
                             self.model.model.cuda()
+                        elif self.model.config_obj.model_type == MODEL_ECD and self.model.device.type == "cuda":
+                            self.model.cuda()
                         _, unexpected_keys = self.model.load_state_dict(state_dict, strict=False)
                         only_weights_format_keys = ["weights_format" in k for k in unexpected_keys]
 
